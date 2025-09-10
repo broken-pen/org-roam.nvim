@@ -232,6 +232,11 @@ local DEFAULT_CONFIG = {
                 end
                 return items
             end,
+            ---@type fun(label:string, node:org-roam.core.file.Node):string
+            ---@diagnostic disable-next-line: unused-local
+            label = function(label, node)
+                return label
+            end,
         },
         ---Node view buffer configuration settings.
         ---@class org-roam.config.ui.NodeView

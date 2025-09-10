@@ -30,6 +30,33 @@ function M.wait(f, ...)
     return M.wrap(f)(...)
 end
 
+---Yields from the current coroutine until the given promise completes.
+---@generic T
+---@param promise OrgPromise<`T`>
+---@param thread? thread
+---@return T
+function M.await(promise, thread)
+    local co = thread or coroutine.running()
+    ---@type boolean, string
+    local ok, msg
+    local result
+    ---@diagnostic disable-next-line: undefined-field
+    promise
+        :next(function(...)
+            result = pack(...)
+            ok = true
+            coroutine.resume(co)
+        end)
+        :catch(function(...)
+            ok = false
+            msg = ...
+            coroutine.resume(co)
+        end)
+    coroutine.yield()
+    assert(ok, msg)
+    return unpack(result)
+end
+
 ---Wraps an asynchronous function that leverages a callback
 ---as its last argument, converting it into a function that
 ---will wait for the callback to succeed by leveraging
