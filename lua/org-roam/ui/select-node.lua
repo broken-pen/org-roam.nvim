@@ -6,7 +6,7 @@
 
 local async = require("org-roam.core.utils.async")
 
----@alias org-roam.ui.NodeSelectItem {id:org-roam.core.database.Id, label:string, value:any}
+---@alias org-roam.ui.NodeSelectItem {id:org-roam.core.database.Id, label:string, value:any,annotation:string?}
 
 ---@class (exact) org-roam.ui.SelectNodeOpts
 ---@field allow_select_missing? boolean
@@ -15,6 +15,7 @@ local async = require("org-roam.core.utils.async")
 ---@field include? string[]
 ---@field init_input? string
 ---@field node_to_items? fun(node:org-roam.core.file.Node):org-roam.config.ui.SelectNodeItems
+---@field annotation? fun(node:org-roam.core.file.Node):string
 
 ---@param roam OrgRoam
 ---@param opts org-roam.ui.SelectNodeOpts
@@ -22,6 +23,7 @@ local async = require("org-roam.core.utils.async")
 local function roam_select_node(roam, opts)
     local Select = require("org-roam.core.ui.select")
     local node_to_items = opts.node_to_items or roam.config.ui.select.node_to_items
+    local annotation_func = opts.annotation or roam.config.ui.select.annotation
 
     -- TODO: Make this more optimal. Probably involves supporting
     --       an async function to return items instead of an
@@ -42,18 +44,21 @@ local function roam_select_node(roam, opts)
             local node = roam.database:get_sync(id)
             if node then
                 local node_items = node_to_items(node)
+                local annotation = annotation_func and annotation_func(node)
                 for _, item in ipairs(node_items) do
                     if type(item) == "string" then
                         table.insert(items, {
                             id = id,
                             label = item,
                             value = item,
+                            annotation = annotation,
                         })
                     elseif type(item) == "table" then
                         table.insert(items, {
                             id = id,
                             label = item.label,
                             value = item.value,
+                            annotation = annotation,
                         })
                     end
                 end
@@ -76,6 +81,9 @@ local function roam_select_node(roam, opts)
         format = function(item)
             return item.label
         end,
+        annotate = function(item)
+            return item.annotation
+        end,
         cancel_on_no_init_matches = true,
     }, opts or {})
 
@@ -94,7 +102,9 @@ end
 ---@return org-roam.core.ui.SelectFzf
 local function fzf_select_node(roam, opts)
     local SelectFzf = require("org-roam.core.ui.select-fzf")
+    local fzf_utils = require("fzf-lua.utils")
     local node_to_items = opts.node_to_items or roam.config.ui.select.node_to_items
+    local annotation_func = opts.annotation or roam.config.ui.select.annotation
 
     ---@type string[] | fun(...)
     local contents
@@ -132,11 +142,22 @@ local function fzf_select_node(roam, opts)
                     local node = async.await(roam.database:get(id), co)
                     if node then
                         local node_items = node_to_items(node)
+                        local annotation = annotation_func and annotation_func(node)
                         for _, item in ipairs(node_items) do
                             if type(item) == "string" then
-                                add_item({ id = id, label = item, value = item })
+                                add_item({
+                                    id = id,
+                                    label = item,
+                                    value = item,
+                                    annotation = annotation,
+                                })
                             elseif type(item) == "table" then
-                                add_item({ id = id, label = item.label, value = item.value })
+                                add_item({
+                                    id = id,
+                                    label = item.label,
+                                    value = item.value,
+                                    annotation = annotation,
+                                })
                             end
                         end
                     end
@@ -164,21 +185,18 @@ local function fzf_select_node(roam, opts)
             end,
             from = function(entry)
                 local item = parse_entry(entry)
-                if not item then
-                    return ""
-                end
-                local node = roam.database:get_sync(item.id)
-                if not node then
-                    return ""
-                end
-                return ("%s:%d:%d"):format(node.file, node.range.start.row + 1, node.range.start.column + 1)
+                local node = item and roam.database:get_sync(item.id)
+                return node and ("%s:%d:%d"):format(node.file, node.range.start.row + 1, node.range.start.column + 1)
+                    or ""
             end,
             ---@param item org-roam.ui.NodeSelectItem
             to = function(item)
                 local id = item.id:gsub("\n", " ")
                 local value = tostring(item.value):gsub("\n", " ")
                 local label = item.label
-                local ret = ("%s\n%s\n%s"):format(id, value, label):gsub("%z", "\\0")
+                local annotation = item.annotation and fzf_utils.nbsp .. fzf_utils.ansi_codes.grey(item.annotation)
+                    or ""
+                local ret = ("%s\n%s\n%s%s"):format(id, value, label, annotation):gsub("%z", "\\0")
                 return ret
             end,
         },

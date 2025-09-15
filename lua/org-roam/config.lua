@@ -232,6 +232,17 @@ local DEFAULT_CONFIG = {
                 end
                 return items
             end,
+            ---@type (fun(node:org-roam.core.file.Node):string?)?
+            annotation = function(node)
+                return #node.tags ~= 0
+                        and table.concat(
+                            vim.tbl_map(function(tag)
+                                return "#" .. tag
+                            end, node.tags),
+                            " "
+                        )
+                    or nil
+            end,
             ---@type fun(label:string, node:org-roam.core.file.Node):string
             ---@diagnostic disable-next-line: unused-local
             label = function(label, node)
